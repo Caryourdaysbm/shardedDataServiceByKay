@@ -1,0 +1,32 @@
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sharded-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sharded-service
+  template:
+    metadata:
+      labels:
+        app: sharded-service
+    spec:
+      containers:
+        - name: sharded-service
+          image: caryourdaysbm/sharded-service:latest
+          ports:
+            - containerPort: 8000   # API
+            - containerPort: 8001   # Metrics
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sharded-service
+spec:
+  selector:
+    app: sharded-service
+  ports:
+    - port: 80
+      targetPort: 8000
