@@ -14,6 +14,7 @@ The service:
 
 ## Features Includes:
 - Single API endpoint: `POST /store`
+- Single API endpoint: `POST /store`
 - In-memory sharding (`userId % N`)
 - Prometheus metrics for observability
 - Dockerfile for containerization
@@ -42,33 +43,82 @@ Stores user data into the corresponding shard.
 }
 ```
 
+### **GET /shards**
+Returns the current in-memory shard distribution. Useful for debugging/demo.
+
+### **GET /health**
+Simple health endpoint returning `{ "status": "ok" }`.
+
 ---
+
 
 ## Prometheus Metrics
-Exposed at: **`/metrics`**
+Prometheus metrics are served by the application on a separate HTTP server started by the app (default port **8001**). The FastAPI API typically runs on port **8000** when using uvicorn. Metrics include:
+- `requests_total{shard="<index>"}` – Total requests per shard  
+- `shard_size{shard="<index>"}` – Number of items currently stored in each shard  
 
-Metrics include:
-- `request_count_total` – Total number of requests received  
-- `shard_request_count` – Number of requests per shard  
-- `shard_distribution` – Distribution of stored records across shards  
+Access metrics at: **http://localhost:8001/metrics** (when running locally or port-forwarding appropriately in Kubernetes).
 
 ---
 
-## Local Setup
+## Local Setup (Python + Uvicorn)
 
-### 1️⃣ Clone the Repository
+### 1️ Clone the Repository
 ```bash
 git clone https://github.com/Caryourdaysbm/sharded-data-service.git
 cd sharded-data-service
 ```
 
-### 2️⃣ Build and Run with Docker
+### 2 Create virtual environment (recommended)
 ```bash
-docker build -t <your-own-dockerhub-username>/sharded-service:latest .
-docker run -p 8000:8000 <your-owndockerhub-username>/sharded-service:latest
+python -m venv .venv
+source .venv/bin/activate   # Linux / macOS
+.venv\Scripts\activate    # Windows PowerShell
 ```
 
-Access the service at **http://localhost:8000**
+### 3 Install dependencies
+```bash
+pip install -r requirements.txt 
+```
+or 
+
+```bash
+py -m pip install -r requirement.txt   
+```
+
+### 4 Start the service with Uvicorn
+Start the application (FastAPI) with uvicorn on port 8000 and the Prometheus metrics server will start on port 8001 automatically (this is handled by the app startup code):
+
+```bash
+python -m uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+- API base: `http://localhost:8000`  
+- Store endpoint: `http://localhost:8000/store`  
+- Shard debug: `http://localhost:8000/shards`  
+- Health: `http://localhost:8000/health`  
+- Metrics: `http://localhost:8001/metrics`
+
+**Note:** Keep the terminal running for the server. Open a new terminal to run the demo script or curl requests.
+
+---
+
+
+## Docker Setup
+
+### Build the Docker image
+```bash
+docker build -t <yourown-dockerhub-username>/sharded-service:latest .
+```
+
+### Run the container locally (optional)
+The container runs both the FastAPI app and the Prometheus metrics server (metrics port 8001 is exposed in the Dockerfile):
+
+```bash
+docker run -d -p 8000:8000 -p 8001:8001 --name sharded-service <your-owndockerhub-username>/sharded-service:latest
+```
+
+Visit the same endpoints as above (`/store`, `/shards`, `/metrics`).
 
 ---
 
@@ -77,49 +127,84 @@ Access the service at **http://localhost:8000**
 ### 1️⃣ Push Docker Image
 ```bash
 docker login
-docker push <yourown-dockerhub-username>/sharded-service:latest
+docker push <your-owndockerhub-username>/sharded-service:latest
 ```
 
-### 2️⃣ Apply Kubernetes Configs
+### 2️⃣ Update `deployment.yaml`
+Set the image to your pushed image:
+```yaml
+image: <yourown-dockerhub-username>/sharded-service:latest
+```
+
+### 3️⃣ Apply deployment and service
 ```bash
 kubectl apply -f deployment.yaml
-kubectl apply -f service.yaml
+kubectl get pods --watch
 ```
 
-### 3️⃣ Verify Deployment
-```bash
-kubectl get pods
-kubectl get svc
-```
+### 4️⃣ If pod is in ImagePullBackOff or Pending
+- Ensure the image exists and is public on Docker Hub.
+- If private, create a Kubernetes imagePullSecret and reference it in the deployment.
+- Increase Docker Desktop resources if you see `Insufficient cpu/memory`.
 
-### 4️⃣ Port Forward for Local Access
+### 5️⃣ Port-forward for local access (after pod is Running)
 ```bash
 kubectl port-forward svc/sharded-service 8000:80
 ```
 
-Service will be available at **http://localhost:8000**
+- API: `http://localhost:8000`  
+- Metrics: `http://localhost:8001/metrics` (metrics port is on the pod; port-forward maps API port — to access metrics locally you may need to port-forward the pod port 8001 as well, e.g.: `kubectl port-forward <pod-name> 8001:8001`)
 
 ---
 
 ## Demo Instructions
 
-### Run Automated Demo
+### Run demo against local Uvicorn server
+1. Start the server (see Local Setup) in one terminal.  
+2. In a separate terminal run:
 ```bash
 python demo.py
 ```
+The demo sends sample POST requests to `/store` and prints the shard distribution.
 
-This sends multiple POST requests to `/store` and displays:
-- Shard assignments  
-- Metrics summary  
+### Run demo against Kubernetes deployment
+1. Ensure pod is `Running` (use `kubectl get pods`).  
+2. Port-forward API and metrics (if needed):
+```bash
+kubectl port-forward svc/sharded-service 8000:80
+kubectl port-forward pod/<pod-name> 8001:8001  # to access metrics directly
+```
+3. Run the demo:
+```bash
+python demo_k8s.py
+```
 
-Example output:
+---
+
+## Example Output (demo)
 ```
-Storing data for user 10 → Shard 1
-Storing data for user 11 → Shard 2
-Storing data for user 12 → Shard 0
-...
-✅ Demo completed successfully
+{'message': 'Stored in shard 1'}
+{'message': 'Stored in shard 2'}
+{'message': 'Stored in shard 0'}
+{'message': 'Stored in shard 1'}
+Shard distribution: {'shard_0': {3: 'Charlie'}, 'shard_1': {1: 'Alice', 4: 'Diana'}, 'shard_2': {2: 'Bob'}}
 ```
+
+---
+
+## Troubleshooting Tips
+
+- **Uvicorn not starting**: Ensure dependencies installed and `app.py` present.  
+- **ImagePullBackOff**: Confirm image tag and repository name; push image to Docker Hub; check `kubectl describe pod <pod>` for events.  
+- **Metrics not visible**: Ensure metrics server port 8001 is reachable; if using Kubernetes, port-forward the pod's metrics port.  
+- **Pod pending due to resources**: Increase Docker Desktop resources or reduce pod resource requests.
+
+---
+
+## Future Improvements
+- Add persistent storage for shards (Redis/Postgres).  
+- Add Grafana dashboards for visualization.  
+- Implement shard rebalancing and persistence.  
 
 ---
 
