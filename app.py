@@ -31,7 +31,6 @@ class StoreRequest(BaseModel):
     model_config = {"extra": "forbid"}  # No extra fields allowed
 
 # API Endpoints
-
 @app.post("/store")
 def store_data(req: StoreRequest):
     shard_index = req.userId % N_SHARDS
