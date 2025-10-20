@@ -1,7 +1,8 @@
 # Sharded Data Service
 
 ## Overview
-The **Sharded Data Service** is a simple microservice built with **FastAPI** that distributes user data across multiple in-memory shards.  
+The **Sharded Data Service** is a simple microservice built with **FastAPI** that distributes user data across multiple in-memory shards.
+The goal of this project is to build a service with a single endpoint, **POST /store**, where each request contains a userId and some associated data. I use a simple in-memory sharding mechanism — distributing data across N shards using `userId % N`. The project also exposes Prometheus metrics for observability and includes a demo script plus Kubernetes deployment files.
 Each of incoming request is routed to a shard based on `userId % N`.  
 
 The service:
@@ -13,7 +14,7 @@ The service:
 ---
 
 ## Features Includes:
-- Single API endpoint: `POST /store`
+- Single core API endpoint: `POST /store`
 - Single API endpoint: `POST /store`
 - In-memory sharding (`userId % N`)
 - Prometheus metrics for observability
@@ -92,12 +93,15 @@ Start the application (FastAPI) with uvicorn on port 8000 and the Prometheus met
 ```bash
 python -m uvicorn app:app --host 0.0.0.0 --port 8000
 ```
-
+ # to run the demo, In a new PowerShell window:
+  ```bash
+  python .\demo.py
+  ```
 - API base: `http://localhost:8000`  
 - Store endpoint: `http://localhost:8000/store`  
 - Shard debug: `http://localhost:8000/shards`  
-- Health: `http://localhost:8000/health`  
-- Metrics: `http://localhost:8001/metrics`
+- View Health: `http://localhost:8000/health`  
+- View Metrics: `http://localhost:8001/metrics`
 
 **Note:** Keep the terminal running for the server. Open a new terminal to run the demo script or curl requests.
 
