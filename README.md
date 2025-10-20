@@ -83,7 +83,7 @@ pip install -r requirements.txt
 or 
 
 ```bash
-py -m pip install -r requirement.txt   
+py -m pip install -r requirements.txt   
 ```
 
 ### 4 Start the service with Uvicorn
